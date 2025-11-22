@@ -24,11 +24,10 @@
 - [Regular Attestation Workflow](#regular-attestation-workflow)
 - [Extended Attestation Flowchart](#extended-attestation-flowchart)
 - [Regular Attestation Flowchart](#regular-attestation-flowchart)
-- [Building](#building)
-  - [Ubuntu Dependencies](#ubuntu-dependencies)
-  - [RHEL and its compatible distributions dependencies](#rhel-and-its-compatible-distributions-dependencies)
-  - [openSUSE and its compatible distributions dependencies](#opensuse-and-its-compatible-distributions-dependencies)
-  - [Building for Azure Confidential VMs](#building-for-azure-confidential-vms)
+- [Quick Start](#quick-start)
+  - [Install on Standard CVMs](#install-on-standard-cvms)
+  - [Build/Install on Azure CVMs](#install-on-azure-cvms)
+  - [Loading sev-guest module](#loading-sev-guest-module)
 - [Reporting Bugs](#reporting-bugs)
 
 ## Basic Usage
@@ -82,17 +81,11 @@ snpguest report $ATT_REPORT_PATH $REQUEST_FILE [OPTIONS]
 
 Requests an attestation report from the AMD-SP (without the `-p, --platform` option) or vTPM (with that option), and writes it to `$ATT_REPORT_PATH` as raw binary. This command is a wrapper of the `SNP_GUEST_REQUEST (MSG_REPORT_REQ)` ioctl.
 
-Without `-p, --platform` or `-r, --random`, the user can pass 64 bytes of data in any file format into `$REQUEST_FILE` to request an attestation report.
-The request file is interpreted as raw binary, and the first 64 bytes of the binary are sent to the AMD-SP as the request data.
-The request data will be bound to the REPORT_DATA field in the attestation report.
+Without `-p, --platform` or `-r, --random`, the user can pass 64 bytes of data in any file format into `$REQUEST_FILE` to request an attestation report. The request file is interpreted as raw binary, and the first 64 bytes of the binary are sent to the AMD-SP as the request data. The request data will be bound to the REPORT_DATA field in the attestation report.
 
 With the `-r, --random` flag, this command generates a random data for the request, which will be written into `$REQUEST_FILE`.
 
-With the `-p, --platform` flag, this command retrieves an attestation report from vTPM NV index `0x01400001`.
-The Report Data in the retrieved attestation report will be written into `$REQUEST_FILE`.
-This attestation route is available (and mandatory) on Microsoft Azure Confidential VMs with SEV-SNP isolation.
-Currently, only the pre-generated attestation report can be retrieved.
-To request a (fresh) attestation report with the user-provided request data, write the request data in vTPM NV index `0x01400002` using any TPM2 tool, then execute this command.
+With the `-p, --platform` flag, this command retrieves an attestation report from vTPM NV index `0x01400001`. This flag requires the `hyperv` feature. The Report Data in the retrieved attestation report will be written into `$REQUEST_FILE`. This attestation route is available (and mandatory) on Microsoft Azure Confidential VMs with SEV-SNP isolation. Currently, only the pre-generated attestation report can be retrieved. To request a (fresh) attestation report with the user-provided request data, write the request data in vTPM NV index `0x01400002` using any TPM2 tool, then execute this command.
 
 The `-v, --vmpl $VMPL` option is an optional parameter of the Virtual Machine Privilege Level (VMPL) to request an attestation report. The default value is 1. If you specify a higher privilege level than is actually available (i.e. a lower VMPL value), a firmware error will occur.
 
@@ -253,9 +246,9 @@ Verifies that the provided certificate chain in `$CERTS_DIR` has been properly s
 The user need to provide all three certificates in `$CERTS_DIR`, namely, the AMD root CA certificate (`ark.*`), the AMD intermediate CA certificate (`ask.*` or `asvk.*`), and the leaf certificate (`vcek.*` or `vlek.*`).
 
 This command then verifies that
-- The root CA cert is self-signed
-- The intermediate CA cert is signed by the root CA
-- The leaf certificate is signed by the intermediate CA
+- ARK is self-signed
+- ASK (or ASVK) is signed by ARK
+- VCEK (or VLEK) is signed by ASK (or ASVK)
 
 An error will be raised if any of the certificates fail verification.
 
@@ -286,10 +279,10 @@ snpguest verify attestation \
   [-d, --host-data $HOST_DATA]
 ```
 
-Verifies the attestation report contents and signature using the VCEK/VLEK certificate and the given parameters. More precisely, this command performs the following steps:
+Verifies the attestation report contents and signature using the VCEK/VLEK certificate and the given parameters. More precisely, this command performs the following verification steps:
 
 - Verify that the REPORTED_TCB and CHIP_ID fields in the report matches the VCEK/VLEK's ones. The `-s, --signature` flag skips this step.
-- Verify the signature of the report using the VCEK/VLEK cert. The `-t, --tcb` flag skips this step.
+- Verify that the report is signed by VCEK/VLEK (ECDSA-SHA384). The `-t, --tcb` flag skips this step.
 - (Option) Verify that each of the fields in the report matches the user-provided reference value. Reference values must be provided in `0x`-prefixed hex string. Currently, only the following fields are supported:
   - `-r, --report-data $REPORT_DATA` (64 bytes = 128 hex characters)
   - `-m, --measurement $MEASUREMENT` (48 bytes = 96 hex characters)
@@ -320,7 +313,7 @@ snpguest verify attestation ./certs report.bin --tcb
 # Verify Signature only
 snpguest verify attestation ./certs report.bin --signature
 
-# Verify TCB, Signature and Reoirt Data
+# Verify TCB, Signature and Report Data
 snpguest verify attestation ./certs report.bin --report-data 0x5482c1ffe29145d47cf678f7681e3b64a89909d6cf8ec0104cfacb0b0418f005f564ad14f5c1381c99b74903a780ea340e887c9b445e9c760bf0b74115b26d45
 
 # Verify TCB, Signature and Measurement
@@ -522,43 +515,76 @@ snpguest verify attestation $CERTS_DIR $ATT_REPORT_PATH [-t, --tcb] [-s, --signa
 ## Regular Attestation Flowchart
 ![alt text](https://github.com/virtee/snpguest/blob/main/docs/regular.PNG?raw=true)
 
-## Building
+## Quick Start
 
-Some packages may need to be installed on the host system in order to build `snpguest`.
+### Install on Standard CVMs
 
 ```bash
-#Rust Installation
+# Build
+git clone https://github.com/virtee/snpguest
+cd snpguest
+cargo build -r
+
+# Install from the repository
+cargo install --git https://github.com/virtee/snpguest
+
+# Install from crate.io
+cargo install snpguest
+```
+
+### Build Dependencies
+
+Some packages may need to be installed on the guest system in order to build `snpguest`.
+
+#### Rust
+
+```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
-
-#Building snpguest after cloning
-cargo build -r
 ```
-### Ubuntu Dependencies
+
+#### Ubuntu Dependencies
 
 ```bash
 sudo apt install build-essential
 ```
 
-### RHEL and its compatible distributions Dependencies
+#### RHEL and its compatible distributions Dependencies
 
 ```bash
 sudo dnf groupinstall "Development Tools" "Development Libraries"
 ```
 
-### openSUSE and its compatible distributions Dependencies
+#### openSUSE and its compatible distributions Dependencies
 
 ```bash
 sudo zypper in -t pattern "devel_basis"
 ```
 
-### Building for Azure Confidential VMs
-On Azure CVMs with AMD SEV-SNP, the paravisor fetches the report from AMD-SP once at VM boot time, and stores it in the vTPM NV index. The native `/dev/sev-guest` interface is hidden from the guest OS, so the guest OS must retrieve the report from the vTPM NV index using the `--platform` flag, which is available only in builds compiled with the `hyperv` feature.
+### Install on Azure CVMs
+
+On Azure CVMs, all communication between the guest OS and AMD-SP is proxied by the OpenHCL paravisor. The native `/dev/sev-guest` interface is hidden from the guest OS. The user must specify the `--platform` flag to get an attestation report; this flag is available only in builds compiled with the `hyperv` feature.
 
 ```bash
+# Build
 git clone https://github.com/virtee/snpguest
-cd ./snpguest
+cd snpguest
 cargo build -r --features hyperv
+
+# Install from the repository
+cargo install --git https://github.com/virtee/snpguest --features hyperv
+
+# Install from crate.io
+cargo install snpguest --features hyperv
+```
+
+### Load sev-guest module
+
+In some guest environments, the device `/dev/sev-guest` does not created by default. In such cases, make sure that the kernel supports SEV-SNP and load the sev-guest module.
+
+```bash
+modprobe sev-guest
+ls -l /dev/sev-guest
 ```
 
 ## Reporting Bugs
