@@ -247,21 +247,21 @@ snpguest key derived-key.bin vcek --guest_field_select 0b110001 --guest_svn 2 --
 
 ### 6. `report` 
 
-Requests an attestation report from the host and writes it to a file with the provided request data and VMPL. The attestation report is written in binary format to the specified report path. The user can pass 64 bytes of data in any file format into `$REQUEST_FILE` to request the attestation report. This data will be bound to the REPORT_DATA field of the attestation report. The `--random` flag can be used to generate and use random data for the request, which will be written into `$REQUEST_FILE`. For Microsoft Azure Confidential VM, the `--platform` flag is required to get an attestation report from the vTPM. With this flag, the request data provided by the hypervisor will be written into the `$REQUEST_FILE`. `VMPL` is an optional parameter that defaults to 1.
+Requests an attestation report from the host and writes it to a file with the provided request data and VMPL. The attestation report is written in binary format to the specified report path. The user can pass 64 bytes of data in any file format into `$REQUEST_FILE` to request the attestation report. This data will be bound to the REPORT_DATA field of the attestation report. The `--random` flag can be used to generate and use random data for the request, which will be written into `$REQUEST_FILE`. On a Confidential VM with the OpenHCL paravisor, use `--openhcl` to request a fresh attestation report through the vTPM. The 64 bytes read from `$REQUEST_FILE`, or generated with `--random`, are supplied to OpenHCL as the report request data. When `--openhcl` is used, `--vmpl` is ignored and the paravisor requests the report at VMPL 0. `VMPL` otherwise defaults to 1.
 
 **Usage**
 ```bash
-snpguest report $ATT_REPORT_PATH $REQUEST_FILE [-v, --vmpl] [-r, --random] [-p, --platform]
+snpguest report $ATT_REPORT_PATH $REQUEST_FILE [-v, --vmpl] [-r, --random] [--openhcl]
 ```
 
 **Arguments**
 | Argument | Description | Default |
 | :--      | :--        | :--    |
 | `$ATT_REPORT_PATH` | Specifies the path where the attestation report would be stored. | required |
-| `$REQUEST_FILE` | Specifies the path to the 64-byte request file. <br>• With `-r` flag, 64 random bytes will be written. <br>• With `-p` flag, writes 64 bytes provided by the hypervisor will be written. <br>• Without flags, the existing file contents are read as-is. | required |
-| `-v, --vmpl $VMPL` | option specifies the VMPL level the Guest is running on.| 1 |
-| `-r, --random` | Generate 64 random bytes of data for the report request. | false |
-| `-p, --platform` | Fetch an attestation report from the vTPM NV index (Only available for Azure CVMs). | false |
+| `$REQUEST_FILE` | Specifies the path to the 64-byte request file. Its contents are used as the report request data. With `--random`, 64 random bytes are generated, written to this file, and used instead. | required |
+| `-v, --vmpl $VMPL` | Specifies the VMPL level the Guest is running on. Ignored with `--openhcl`, which requests the report at VMPL 0. | 1 |
+| `-r, --random` | Generate 64 random bytes of data for the report request and write them to `$REQUEST_FILE`. | false |
+| `--openhcl` | Request a fresh attestation report through the OpenHCL paravisor (only available on supported Confidential VMs with a binary built with the `hyperv` feature). | false |
 
 **Example**
 ```bash
@@ -269,8 +269,8 @@ snpguest report $ATT_REPORT_PATH $REQUEST_FILE [-v, --vmpl] [-r, --random] [-p, 
 snpguest report attestation-report.bin request-file.bin
 # Requesting Attestation Report using random data
 snpguest report attestation-report.bin random-request-file.bin --random
-# Get Pregenerated Attestation Report and Request Data from vTPM
-snpguest report attestation-report.bin platform-request-file.bin --platform
+# Requesting a fresh Attestation Report through OpenHCL with user-generated data
+snpguest report attestation-report.bin request-file.bin --openhcl
 ```
 
 ### 7. `verify` 
@@ -349,10 +349,10 @@ snpguest -q <SUBCOMMAND>
 
 ### [Extended Attestation Workflow](#extended-attestation-flowchart)
 
-**Step 1.** Request the attestation report by providing the two mandatory parameters - `$ATT_REPORT_PATH` which is the path pointing to where the user wishes to store the attestation report and `$REQUEST_FILE` which is the path pointing to where the request file used to request the attestation report is stored. The optional parameter \[`-v, --vmpl`\] specifies the vmpl level for the attestation report and is set to 1 by default. The flag \[`-r, --random`\] generates random data to be used as request data for the attestation report. Lastly, the flag \[`-p, --platform`\] obtains both the attestation report and the request data from the platform (only available for a Microsoft Azure CVM where Hyper-V guest is enabled).
+**Step 1.** Request the attestation report by providing the two mandatory parameters - `$ATT_REPORT_PATH` which is the path pointing to where the user wishes to store the attestation report and `$REQUEST_FILE` which contains the 64 bytes of request data. The optional parameter \[`-v, --vmpl`\] specifies the VMPL level for the attestation report and is set to 1 by default. The flag \[`-r, --random`\] generates random request data and writes it to `$REQUEST_FILE`. On a Confidential VM with the OpenHCL paravisor, the `--openhcl` flag requests a fresh report through OpenHCL using the data from `$REQUEST_FILE`, or the generated data when combined with `--random`. `--openhcl` requires the `hyperv` feature and ignores `--vmpl` because the paravisor requests the report at VMPL 0.
 
 ```bash
-snpguest report $ATT_REPORT_PATH $REQUEST_FILE [-v, --vmpl] [-r, --random] [-p, --platform]
+snpguest report $ATT_REPORT_PATH $REQUEST_FILE [-v, --vmpl] [-r, --random] [--openhcl]
 ```
 
 **Step 2.** Request certificates from the extended memory by providing the two mandatory parameters - `$ENCODING` which specifies whether to use PEM or DER encoding to store the certificates and $CERTS_DIR which specifies the path in the user's directory where the certificates will be saved.
@@ -377,10 +377,10 @@ snpguest verify attestation $CERTS_DIR $ATT_REPORT_PATH [-t, --tcb] [-s, --signa
 
 ### [Regular Attestation Workflow](#regular-attestation-flowchart)
 
-**Step 1.** Request the attestation report by providing the two mandatory parameters - `$ATT_REPORT_PATH` which is the path pointing to where the user wishes to store the attestation report and `$REQUEST_FILE` which is the path pointing to where the request file used to request the attestation report is stored. The optional parameter \[`-v, --vmpl`\] specifies the vmpl level for the attestation report and is set to 1 by default. The flag \[`-r, --random`\] generates random data to be used as request data for the attestation report. Lastly, the flag \[`-p, --platform`\] obtains both the attestation report and the request data from the platform (only available for a Microsoft Azure CVM where Hyper-V guest is enabled).
+**Step 1.** Request the attestation report by providing the two mandatory parameters - `$ATT_REPORT_PATH` which is the path pointing to where the user wishes to store the attestation report and `$REQUEST_FILE` which contains the 64 bytes of request data. The optional parameter \[`-v, --vmpl`\] specifies the VMPL level for the attestation report and is set to 1 by default. The flag \[`-r, --random`\] generates random request data and writes it to `$REQUEST_FILE`. On a Confidential VM with the OpenHCL paravisor, the `--openhcl` flag requests a fresh report through OpenHCL using the data from `$REQUEST_FILE`, or the generated data when combined with `--random`. `--openhcl` requires the `hyperv` feature and ignores `--vmpl` because the paravisor requests the report at VMPL 0.
 
 ```bash
-snpguest report $ATT_REPORT_PATH $REQUEST_FILE [-v, --vmpl] [-r, --random] [-p, --platform]
+snpguest report $ATT_REPORT_PATH $REQUEST_FILE [-v, --vmpl] [-r, --random] [--openhcl]
 ```
 
 **Step 2.** Request AMD Root Key (ARK) and AMD SEV Key (ASK) (or AMD SEV-VLEK Key (ASVK) for VLEK) from the AMD Key Distribution Service (KDS) by providing the three mandatory parameters - `$ENCODING` which specifies whether to use PEM or DER encoding to store the certificates, `$CERTS_DIR` which specifies the path in the user's directory where the certificates will be saved, and `$PROCESSOR_MODEL` - which specifies the AMD Processor model for which the certificates are to be fetched. The optional `-e, --endorser` argument specifies the type of attestation signing key (defaults to VCEK).
@@ -443,7 +443,7 @@ sudo zypper in -t pattern "devel_basis"
 ```
 
 ### Building for Azure Confidential VMs
-On Azure CVMs with AMD SEV-SNP, the paravisor fetches the report from AMD-SP once at VM boot time, and stores it in the vTPM NV index. The native `/dev/sev-guest` interface is hidden from the guest OS, so the guest OS must retrieve the report from the vTPM NV index using the `--platform` flag, which is available only in builds compiled with the `hyperv` feature.
+On Azure CVMs with AMD SEV-SNP, the native `/dev/sev-guest` interface is hidden from the guest OS. Build `snpguest` with the `hyperv` feature and use the `--openhcl` flag to request a fresh attestation report through the OpenHCL paravisor. The command supplies the 64 bytes from `$REQUEST_FILE` (or the bytes generated by `--random`) to OpenHCL through the vTPM, then reads the resulting report from the vTPM NV index.
 
 ```bash
 git clone https://github.com/virtee/snpguest
