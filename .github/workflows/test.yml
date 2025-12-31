@@ -7,14 +7,16 @@ permissions:
 
 jobs:
   test:
-    name: ${{ matrix.toolchain }} (${{ matrix.profile.name }})
+    name: ${{ matrix.toolchain }} ${{ matrix.profile.name }} (${{ matrix.features }})
     runs-on: ubuntu-latest
     steps:
+      - if: matrix.features == 'hyperv'
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libtss2-dev
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.toolchain }}
-      - run: cargo test ${{ matrix.profile.flag }}
+      - run: cargo test ${{ matrix.profile.flag }} --features=${{ matrix.features }}
     strategy:
       fail-fast: false
       matrix:
@@ -26,3 +28,6 @@ jobs:
           - name: debug
           - name: release
             flag: --release
+        features:
+          - default
+          - hyperv
